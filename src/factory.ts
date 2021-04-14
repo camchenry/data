@@ -1,5 +1,5 @@
 import {
-  EntityInstance,
+  InternalEntity,
   FactoryAPI,
   ModelAPI,
   ModelDeclaration,
@@ -17,6 +17,7 @@ import { findPrimaryKey } from './utils/findPrimaryKey'
 import { generateRestHandlers } from './model/generateRestHandlers'
 import { generateGraphQLHandlers } from './model/generateGraphQLHandlers'
 import { sync } from './extensions/sync'
+import { removeInternalProperties } from './utils/removeInternalProperties'
 
 /**
  * Create a database with the given models.
@@ -28,6 +29,7 @@ export function factory<Dictionary extends ModelDictionary>(
 
   return Object.entries(dictionary).reduce<any>((acc, [modelName, props]) => {
     acc[modelName] = createModelApi<Dictionary, typeof modelName>(
+      dictionary,
       modelName,
       props,
       db,
@@ -40,6 +42,7 @@ function createModelApi<
   Dictionary extends ModelDictionary,
   ModelName extends string
 >(
+  dictionary: Dictionary,
   modelName: ModelName,
   declaration: ModelDeclaration,
   db: Database<Dictionary>,
@@ -59,20 +62,10 @@ function createModelApi<
 
   const api: ModelAPI<Dictionary, ModelName> = {
     create(initialValues = {}) {
-      const { primaryKey, properties, relations } = parseModelDeclaration<
+      const { properties, relations } = parseModelDeclaration<
         Dictionary,
         ModelName
-      >(modelName, declaration, initialValues)
-
-      if (typeof primaryKey === 'undefined') {
-        throw new OperationError(
-          OperationErrorType.MissingPrimaryKey,
-          `Failed to create a "${modelName}" model: none of the listed properties is marked as a primary key (${Object.keys(
-            declaration,
-          ).join()}).`,
-        )
-      }
-
+      >(dictionary, modelName, declaration, initialValues)
       const entity = createModel<Dictionary, ModelName>(
         modelName,
         primaryKey,
@@ -90,8 +83,7 @@ function createModelApi<
       )
 
       db.create(modelName, entity)
-
-      return entity
+      return removeInternalProperties(entity)
     },
     count(query) {
       if (!query) {
@@ -113,7 +105,7 @@ function createModelApi<
         new OperationError(OperationErrorType.EntityNotFound),
       )
 
-      return firstResult
+      return firstResult ? removeInternalProperties(firstResult) : null
     },
     findMany(query) {
       const results = executeQuery(modelName, primaryKey, query, db)
@@ -126,13 +118,14 @@ function createModelApi<
         new OperationError(OperationErrorType.EntityNotFound),
       )
 
-      return results
+      return results.map(removeInternalProperties)
     },
     getAll() {
-      return db.listEntities(modelName)
+      return db.listEntities(modelName).map(removeInternalProperties)
     },
     update({ strict, ...query }) {
-      const prevRecord = api.findFirst(query)
+      const results = executeQuery(modelName, primaryKey, query, db)
+      const prevRecord = first(results)
 
       if (!prevRecord) {
         invariant(
@@ -163,11 +156,11 @@ function createModelApi<
 
       db.update(modelName, prevRecord, nextRecord)
 
-      return nextRecord
+      return removeInternalProperties(nextRecord)
     },
     updateMany({ strict, ...query }) {
-      const records = api.findMany(query)
-      const updatedRecords: EntityInstance<any, any>[] = []
+      const records = executeQuery(modelName, primaryKey, query, db)
+      const updatedRecords: InternalEntity<any, any>[] = []
 
       if (records.length === 0) {
         invariant(
@@ -201,10 +194,11 @@ function createModelApi<
         updatedRecords.push(nextRecord)
       })
 
-      return updatedRecords
+      return updatedRecords.map(removeInternalProperties)
     },
     delete({ strict, ...query }) {
-      const record = api.findFirst(query)
+      const results = executeQuery(modelName, primaryKey, query, db)
+      const record = first(results)
 
       if (!record) {
         invariant(
@@ -219,10 +213,10 @@ function createModelApi<
       }
 
       db.delete(modelName, record[record.__primaryKey] as string)
-      return record
+      return removeInternalProperties(record)
     },
     deleteMany({ strict, ...query }) {
-      const records = api.findMany(query)
+      const records = executeQuery(modelName, primaryKey, query, db)
 
       if (records.length === 0) {
         invariant(
@@ -240,7 +234,7 @@ function createModelApi<
         db.delete(modelName, record[record.__primaryKey] as string)
       })
 
-      return records
+      return records.map(removeInternalProperties)
     },
     toHandlers(type, baseUrl): any {
       if (type === 'graphql') {

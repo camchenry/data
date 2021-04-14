@@ -1,14 +1,8 @@
 import pluralize from 'pluralize'
 import { RestContext, RestRequest, ResponseResolver, rest } from 'msw'
-import {
-  EntityInstance,
-  ModelDictionary,
-  ModelAPI,
-  PrimaryKeyType,
-} from '../glossary'
+import { Entity, ModelDictionary, ModelAPI, PrimaryKeyType } from '../glossary'
 import { GetQueryFor } from '../query/queryTypes'
 import { OperationErrorType, OperationError } from '../errors/OperationError'
-import { removeInternalProperties } from '../utils/removeInternalProperties'
 
 interface WeakQuerySelectorWhere<KeyType extends PrimaryKeyType> {
   [key: string]: Partial<GetQueryFor<KeyType>>
@@ -74,7 +68,7 @@ export function generateRestHandlers<
   return [
     rest.get(
       buildUrl(modelPath),
-      withErrors<EntityInstance<Dictionary, ModelName>>((req, res, ctx) => {
+      withErrors<Entity<Dictionary, ModelName>>((req, res, ctx) => {
         const cursor = req.url.searchParams.get('cursor')
         const rawSkip = req.url.searchParams.get('skip')
         const rawTake = req.url.searchParams.get('take')
@@ -93,79 +87,73 @@ export function generateRestHandlers<
 
         const records = model.findMany(options)
 
-        return res(ctx.json(records.map(removeInternalProperties)))
+        return res(ctx.json(records))
       }),
     ),
     rest.get(
       buildUrl(`${modelPath}/:${primaryKey}`),
-      withErrors<
-        EntityInstance<Dictionary, ModelName>,
-        RequestParams<PrimaryKeyType>
-      >((req, res, ctx) => {
-        const id = req.params[primaryKey]
-        const where: WeakQuerySelectorWhere<typeof primaryKey> = {
-          [primaryKey]: {
-            equals: id,
-          },
-        }
-        const entity = model.findFirst({
-          strict: true,
-          where: where as any,
-        })
+      withErrors<Entity<Dictionary, ModelName>, RequestParams<PrimaryKeyType>>(
+        (req, res, ctx) => {
+          const id = req.params[primaryKey]
+          const where: WeakQuerySelectorWhere<typeof primaryKey> = {
+            [primaryKey]: {
+              equals: id,
+            },
+          }
+          const entity = model.findFirst({
+            strict: true,
+            where: where as any,
+          })
 
-        return res(ctx.json(removeInternalProperties(entity)))
-      }),
+          return res(ctx.json(entity))
+        },
+      ),
     ),
     rest.post(
       buildUrl(modelPath),
-      withErrors<EntityInstance<Dictionary, ModelName>>((req, res, ctx) => {
+      withErrors<Entity<Dictionary, ModelName>>((req, res, ctx) => {
         const createdEntity = model.create(req.body)
-        return res(
-          ctx.status(201),
-          ctx.json(removeInternalProperties(createdEntity)),
-        )
+        return res(ctx.status(201), ctx.json(createdEntity))
       }),
     ),
     rest.put(
       buildUrl(`${modelPath}/:${primaryKey}`),
-      withErrors<
-        EntityInstance<Dictionary, ModelName>,
-        RequestParams<PrimaryKeyType>
-      >((req, res, ctx) => {
-        const id = req.params[primaryKey]
-        const where: WeakQuerySelectorWhere<typeof primaryKey> = {
-          [primaryKey]: {
-            equals: id,
-          },
-        }
-        const updatedEntity = model.update({
-          strict: true,
-          where: where as any,
-          data: req.body,
-        })!
+      withErrors<Entity<Dictionary, ModelName>, RequestParams<PrimaryKeyType>>(
+        (req, res, ctx) => {
+          const id = req.params[primaryKey]
+          const where: WeakQuerySelectorWhere<typeof primaryKey> = {
+            [primaryKey]: {
+              equals: id,
+            },
+          }
+          const updatedEntity = model.update({
+            strict: true,
+            where: where as any,
+            data: req.body,
+          })!
 
-        return res(ctx.json(removeInternalProperties(updatedEntity)))
-      }),
+          return res(ctx.json(updatedEntity))
+        },
+      ),
     ),
     rest.delete(
       buildUrl(`${modelPath}/:${primaryKey}`),
-      withErrors<
-        EntityInstance<Dictionary, ModelName>,
-        RequestParams<PrimaryKeyType>
-      >((req, res, ctx) => {
-        const id = req.params[primaryKey]
-        const where: WeakQuerySelectorWhere<typeof primaryKey> = {
-          [primaryKey]: {
-            equals: id,
-          },
-        }
-        const deletedEntity = model.delete({
-          strict: true,
-          where: where as any,
-        })!
+      withErrors<Entity<Dictionary, ModelName>, RequestParams<PrimaryKeyType>>(
+        (req, res, ctx) => {
+          const id = req.params[primaryKey]
+          const where: WeakQuerySelectorWhere<typeof primaryKey> = {
+            [primaryKey]: {
+              equals: id,
+            },
+          }
+          const deletedEntity = model.delete({
+            strict: true,
+            where: where as any,
+          })!
 
-        return res(ctx.json(removeInternalProperties(deletedEntity)))
-      }),
+          return res(ctx.json(deletedEntity))
+        },
+      ),
     ),
   ]
 }

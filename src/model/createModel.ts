@@ -32,7 +32,6 @@ export function createModel<
   }
   const model = Object.assign({}, properties, internalProperties)
   defineRelationalProperties(model, relations, db)
-
   log(`created "${modelName}" model`, model)
 
   return model

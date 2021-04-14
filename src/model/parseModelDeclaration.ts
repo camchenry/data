@@ -7,9 +7,10 @@ import {
   Value,
   ModelDeclaration,
   PrimaryKeyType,
-  EntityInstance,
+  Entity,
 } from '../glossary'
 import { invariant } from '../utils/invariant'
+import { findPrimaryKey } from '../utils/findPrimaryKey'
 
 const log = debug('parseModelDeclaration')
 
@@ -23,6 +24,7 @@ export function parseModelDeclaration<
   Dictionary extends ModelDictionary,
   ModelName extends string
 >(
+  dictionary: Dictionary,
   modelName: ModelName,
   declaration: ModelDeclaration,
   initialValues?: Partial<Value<Dictionary[ModelName], Dictionary>>,
@@ -67,12 +69,18 @@ export function parseModelDeclaration<
       }
 
       const relationDefinition = declaration[key] as RelationDefinition<
-        RelationKind.OneOf,
+        any,
         ModelName
       >
+      if (exactValue && relationDefinition) {
+        const relationPrimarykey = findPrimaryKey(
+          dictionary[relationDefinition.modelName],
+        )!
 
-      if (exactValue) {
-        if (Array.isArray(exactValue)) {
+        if (
+          Array.isArray(exactValue) &&
+          relationDefinition.kind === RelationKind.ManyOf
+        ) {
           /**
            * @fixme Differentiate between array of references,
            * array of exact values, and a mixed array of two.
@@ -82,10 +90,10 @@ export function parseModelDeclaration<
             modelName: relationDefinition.modelName,
             unique: relationDefinition.unique,
             refs: exactValue.map(
-              (entityRef: EntityInstance<Dictionary, ModelName>) => ({
-                __type: entityRef.__type,
-                __primaryKey: entityRef.__primaryKey,
-                __nodeId: entityRef[entityRef.__primaryKey],
+              (entityRef: Entity<Dictionary, ModelName>) => ({
+                __type: relationDefinition.modelName,
+                __primaryKey: relationPrimarykey,
+                __nodeId: entityRef[relationPrimarykey],
               }),
             ),
           }
@@ -93,13 +101,14 @@ export function parseModelDeclaration<
           return acc
         }
 
-        if ('__primaryKey' in exactValue) {
+        if (
+          !Array.isArray(exactValue) &&
+          relationDefinition.kind === RelationKind.OneOf
+        ) {
           const entityRef = exactValue
 
           log(
-            `value for "${modelName}.${key}" references "${
-              entityRef.__type
-            }" with id "${entityRef[entityRef.__primaryKey]}"`,
+            `value for "${modelName}.${key}" references "${entityRef.__type}" with id "${entityRef[relationPrimarykey]}"`,
             entityRef,
           )
 
@@ -109,9 +118,9 @@ export function parseModelDeclaration<
             unique: relationDefinition.unique,
             refs: [
               {
-                __type: entityRef.__type,
-                __primaryKey: entityRef.__primaryKey,
-                __nodeId: entityRef[entityRef.__primaryKey],
+                __type: relationDefinition.modelName,
+                __primaryKey: relationPrimarykey,
+                __nodeId: entityRef[relationPrimarykey],
               },
             ],
           }
@@ -141,18 +150,10 @@ export function parseModelDeclaration<
       return acc
     },
     {
-      primaryKey: undefined,
       properties: {},
       relations: {},
     },
   )
-
-  // Primary key is required on each model declaration.
-  if (result.primaryKey == null) {
-    throw new Error(
-      `Failed to parse model declaration for "${modelName}": primary key not found.`,
-    )
-  }
 
   return result
 }

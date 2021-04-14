@@ -1,20 +1,20 @@
 import { debug } from 'debug'
 import { Database } from '../db/Database'
-import { EntityInstance, Relation, RelationKind } from '../glossary'
+import { InternalEntity, Relation, RelationKind } from '../glossary'
 import { executeQuery } from '../query/executeQuery'
 import { first } from '../utils/first'
 
 const log = debug('defineRelationalProperties')
 
 export function defineRelationalProperties(
-  entity: EntityInstance<any, any>,
+  entity: InternalEntity<any, any>,
   relations: Record<string, Relation<any>>,
   db: Database<any>,
 ): void {
   log('setting relations', relations)
 
   const properties = Object.entries(relations).reduce<
-    Record<string, { get(): any }>
+    Record<string, { get(): any; enumerable: boolean }>
   >((acc, [property, relation]) => {
     log(
       `defining relation for property "${entity.__type}.${property}"`,
@@ -65,10 +65,10 @@ export function defineRelationalProperties(
     }
 
     acc[property] = {
+      enumerable: true,
       get() {
         log(`get "${property}"`, relation)
-
-        const refValue = relation.refs.reduce<EntityInstance<any, any>[]>(
+        const refValue = relation.refs.reduce<InternalEntity<any, any>[]>(
           (list, entityRef) => {
             return list.concat(
               executeQuery(
@@ -87,7 +87,6 @@ export function defineRelationalProperties(
           },
           [],
         )
-
         log(`resolved "${relation.kind}" "${property}" to`, refValue)
 
         return relation.kind === RelationKind.OneOf ? first(refValue) : refValue
@@ -96,6 +95,5 @@ export function defineRelationalProperties(
 
     return acc
   }, {})
-
   Object.defineProperties(entity, properties)
 }
