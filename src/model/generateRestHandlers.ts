@@ -5,10 +5,13 @@ import {
   ModelDictionary,
   ModelAPI,
   PrimaryKeyType,
+  ModelDeclaration,
+  Value,
 } from '../glossary'
-import { GetQueryFor } from '../query/queryTypes'
+import { GetQueryFor, QuerySelectorWhere } from '../query/queryTypes'
 import { OperationErrorType, OperationError } from '../errors/OperationError'
 import { removeInternalProperties } from '../utils/removeInternalProperties'
+import { findPrimaryKey } from '../utils/findPrimaryKey'
 
 interface WeakQuerySelectorWhere<KeyType extends PrimaryKeyType> {
   [key: string]: Partial<GetQueryFor<KeyType>>
@@ -59,15 +62,34 @@ export function withErrors<RequestBodyType = any, RequestParamsType = any>(
   }
 }
 
+function getFilters<
+  Dictionary extends ModelDictionary,
+  ModelName extends string
+>(
+  searchParams: URLSearchParams,
+  declaration: ModelDeclaration,
+): QuerySelectorWhere<any> {
+  const filters: QuerySelectorWhere<any> = {}
+  searchParams.forEach((value, key) => {
+    if (declaration[key]) {
+      filters[key] = {
+        equals: value,
+      }
+    }
+  })
+  return filters
+}
+
 export function generateRestHandlers<
   Dictionary extends ModelDictionary,
   ModelName extends string
 >(
   modelName: ModelName,
-  primaryKey: PrimaryKeyType,
+  modelDeclaration: ModelDeclaration,
   model: ModelAPI<Dictionary, ModelName>,
   baseUrl: string = '',
 ) {
+  const primaryKey = findPrimaryKey(modelDeclaration)!
   const modelPath = pluralize(modelName)
   const buildUrl = createUrlBuilder(baseUrl)
 
@@ -78,12 +100,12 @@ export function generateRestHandlers<
         const cursor = req.url.searchParams.get('cursor')
         const rawSkip = req.url.searchParams.get('skip')
         const rawTake = req.url.searchParams.get('take')
+        const filters = getFilters(req.url.searchParams, modelDeclaration)
 
         const skip = parseInt(rawSkip ?? '0', 10)
         const take = rawTake == null ? rawTake : parseInt(rawTake, 10)
 
-        let options = { where: {} }
-
+        let options = { where: filters }
         if (take && !isNaN(take) && !isNaN(skip)) {
           options = Object.assign(options, { take, skip })
         }
