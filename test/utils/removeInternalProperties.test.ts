@@ -1,7 +1,7 @@
 import { InternalEntity } from '../../src/glossary'
 import { removeInternalProperties } from '../../src/utils/removeInternalProperties'
 
-it('removes internal properties from an entity', () => {
+it('removes internal properties from a plain entity', () => {
   const user: InternalEntity<any, any> = {
     __type: 'user',
     __primaryKey: 'id',
@@ -54,5 +54,19 @@ it('removes internal properties from an entity with relations', () => {
       { id: 'contact-123', type: 'home' },
       { id: 'contact-456', type: 'office' },
     ],
+  })
+})
+
+it('preserves custom properties starting with a leading "__"', () => {
+  const user: InternalEntity<any, any> = {
+    __type: 'user',
+    __primaryKey: 'id',
+    __customProperty: true,
+    id: 'abc-123',
+  }
+
+  expect(removeInternalProperties(user)).toEqual({
+    __customProperty: true,
+    id: 'abc-123',
   })
 })
